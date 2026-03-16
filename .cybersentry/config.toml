@@ -1,0 +1,32 @@
+[general]
+project_name = "my-project"
+llm_mode = "local"
+default_model = "openai/gpt-4o-mini"
+chat_model = "openai/gpt-4o-mini"
+coding_model = "qwen/qwen3-coder:free"
+max_react_iterations = 10
+debate_rounds = 3
+
+[scanners]
+enabled = [
+    "bandit",
+    "semgrep",
+]
+
+[openrouter]
+api_key_env = "OPENROUTER_API_KEY"
+base_url = "https://openrouter.ai/api/v1"
+temperature = 0.3
+max_tokens = 4096
+
+[local_llm]
+base_url = "http://localhost:11434/v1"
+chat_model = "qwen2.5-coder:7b"
+coding_model = "qwen2.5-coder:7b"
+
+[scoring.severity_weights]
+CRITICAL = 1.0
+HIGH = 0.75
+MEDIUM = 0.45
+LOW = 0.2
+INFO = 0.05
