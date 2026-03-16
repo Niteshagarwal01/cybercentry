@@ -29,6 +29,11 @@ class WebScanRequest(BaseModel):
     rate_limit_ms: int = Field(150, ge=0, le=5000)
 
 
+  class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4000)
+    run_id: str | None = Field(default=None, description="Optional run_id for contextual chat answers")
+
+
 def _validate_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -173,6 +178,53 @@ def api_get_remediation(run_id: str) -> dict:
     return {"content": path.read_text(encoding="utf-8"), "path": str(path)}
 
 
+  @app.post("/api/chat")
+  def api_chat(payload: ChatRequest) -> dict:
+    cfg = Config()
+    if not cfg.is_initialized:
+      cfg.initialize()
+
+    from cyber_sentry_cli.integrations.openrouter import OpenRouterClient
+
+    llm = OpenRouterClient(cfg)
+    if not llm.is_configured():
+      raise HTTPException(
+        status_code=400,
+        detail="Chat backend is not configured. Set local LLM/OpenRouter settings first.",
+      )
+
+    run_context = ""
+    if payload.run_id:
+      state = RunStateManager(cfg)
+      try:
+        run = state.load_run(payload.run_id)
+        run_context = (
+          f"\nContext run_id={run.id}; target={run.target}; "
+          f"total_findings={run.total_findings}; scanners={','.join(run.scanners_used)}"
+        )
+      except FileNotFoundError:
+        run_context = f"\nContext run_id={payload.run_id} (not found on disk)."
+
+    messages = [
+      {
+        "role": "system",
+        "content": (
+          "You are CyberSentry web assistant. Be concise, technical, and security-focused. "
+          "If asked for remediation, provide specific actionable steps."
+          + run_context
+        ),
+      },
+      {"role": "user", "content": payload.message},
+    ]
+
+    try:
+      response = llm.chat(messages, temperature=0.25)
+    except Exception as exc:
+      raise HTTPException(status_code=502, detail=f"Chat request failed: {exc}")
+
+    return {"reply": response, "model": cfg.chat_model}
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return """
@@ -301,6 +353,39 @@ def index() -> str:
       font-family: Consolas, \"Courier New\", monospace; font-size: 12px; line-height: 1.35; color: #dbe9ff;
     }
 
+    .chatbox {
+      margin-top: 14px;
+      border: 1px solid #294770;
+      border-radius: 10px;
+      background: #061223;
+      padding: 10px;
+    }
+    .chatlog {
+      max-height: 280px;
+      overflow: auto;
+      border: 1px solid #244061;
+      border-radius: 8px;
+      padding: 8px;
+      background: #040d19;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .msg { margin-bottom: 8px; }
+    .msg-user { color: #b8ff2c; }
+    .msg-bot { color: #9fd1ff; }
+    .chatrow { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 8px; }
+    .chatbtn {
+      padding: 10px 12px;
+      border: 1px solid #2f5d8c;
+      border-radius: 8px;
+      background: #0a1f38;
+      color: #e6f1ff;
+      font-weight: 700;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
     .project-list { margin: 8px 0 0; padding-left: 18px; color: var(--muted); line-height: 1.5; }
     .project-list li { margin-bottom: 6px; }
     .download {
@@ -375,6 +460,16 @@ def index() -> str:
           <pre id=\"artifactContent\"></pre>
         </div>
         <div id=\"results\"></div>
+
+        <div class=\"chatbox\">
+          <h2 style=\"margin-bottom:4px;\">Cyber Chat (Web)</h2>
+          <p class=\"muted\">Ask security questions, request remediation guidance, or reference a run ID for context.</p>
+          <div id=\"chatLog\" class=\"chatlog\"></div>
+          <div class=\"chatrow\">
+            <input class=\"input\" id=\"chatInput\" type=\"text\" placeholder=\"Explain this finding and suggest patch strategy...\" />
+            <button class=\"chatbtn\" onclick=\"sendChat()\">Send</button>
+          </div>
+        </div>
       </div>
 
       <aside class=\"card\">
@@ -390,7 +485,7 @@ def index() -> str:
         <div class=\"download\" style=\"margin-top:12px;\">
           <div class=\"kicker\" style=\"color:var(--cyan); margin-bottom:4px;\">Website Access</div>
           <div class=\"muted\">Start local web dashboard:</div>
-          <div class=\"code\">cs ui --host 127.0.0.1 --port 8080\nopen http://127.0.0.1:8080</div>
+          <div class=\"code\">cs ui --host 127.0.0.1 --port 8080\n# if 8080 is busy use 8081\ncs ui --host 127.0.0.1 --port 8081\n# then open in browser\nhttp://127.0.0.1:8081</div>
         </div>
 
         <div class=\"download\">
@@ -411,6 +506,15 @@ def index() -> str:
 
   <script>
     let lastRunId = '';
+
+    function appendChat(role, text) {
+      const log = document.getElementById('chatLog');
+      const line = document.createElement('div');
+      line.className = 'msg ' + (role === 'user' ? 'msg-user' : 'msg-bot');
+      line.textContent = (role === 'user' ? 'You: ' : 'CyberSentry: ') + text;
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    }
 
     async function runScan() {
       const status = document.getElementById('status');
@@ -493,6 +597,47 @@ def index() -> str:
       document.getElementById('artifactTitle').textContent = 'WEB_REMEDIATION.md';
       document.getElementById('artifactContent').textContent = data.content;
     }
+
+    async function sendChat() {
+      const input = document.getElementById('chatInput');
+      const raw = input.value || '';
+      const message = raw.trim();
+      if (!message) return;
+
+      input.value = '';
+      appendChat('user', message);
+      appendChat('bot', 'Thinking...');
+
+      const log = document.getElementById('chatLog');
+      const thinkingNode = log.lastChild;
+
+      try {
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ message, run_id: lastRunId || null }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          thinkingNode.textContent = 'CyberSentry: Error - ' + (data.detail || 'chat failed');
+          return;
+        }
+        thinkingNode.textContent = 'CyberSentry: ' + (data.reply || 'No response');
+      } catch (e) {
+        thinkingNode.textContent = 'CyberSentry: Error - ' + e;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      appendChat('bot', 'Web chat ready. Ask about findings, remediation, or scanner setup.');
+      const input = document.getElementById('chatInput');
+      input.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Enter') {
+          evt.preventDefault();
+          sendChat();
+        }
+      });
+    });
   </script>
 </body>
 </html>
