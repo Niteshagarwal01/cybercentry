@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Iterator
 from urllib.parse import urlparse
 
@@ -13,6 +14,7 @@ from rich.console import Console
 from cyber_sentry_cli.core.config import Config
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 class OpenRouterClient:
@@ -121,6 +123,7 @@ class OpenRouterClient:
         try:
             return json.loads(response)
         except json.JSONDecodeError:
+            logger.warning("LLM returned invalid JSON in chat_json (len=%d). Response start: %s", len(response), response[:120])
             return {}
 
     def chat_stream(
@@ -163,5 +166,5 @@ class OpenRouterClient:
             if hasattr(e, "response") and e.response is not None:
                 msg = f"API Stream Error ({e.response.status_code})"
             console.print(f"\n[bold red]{msg}[/]")
-            # Yield error so user sees it inline
-            yield f"\n[Error: {msg}]"
+            # Yield sanitized error so user sees it inline (no internal details)
+            yield "\n[Error: LLM request failed. Check your connection and try again.]"

@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -34,9 +34,9 @@ load_dotenv(find_dotenv(usecwd=True))
 DEFAULT_CONFIG: dict[str, Any] = {
     "general": {
         "project_name": "my-project",
-        "llm_mode": "production",
-        "chat_model": "openai/gpt-4o-mini",
-        "coding_model": "qwen/qwen3-coder:free",
+        "llm_mode": "local",
+        "chat_model": "qwen2.5-coder:7b",
+        "coding_model": "qwen2.5-coder:7b",
         "max_react_iterations": 10,
         "debate_rounds": 3,
     },
@@ -48,6 +48,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "base_url": "https://openrouter.ai/api/v1",
         "temperature": 0.3,
         "max_tokens": 4096,
+        "chat_model": "openai/gpt-4o-mini",
+        "coding_model": "qwen/qwen3-coder:free",
     },
     "local_llm": {
         "base_url": "http://localhost:11434/v1",
@@ -87,7 +89,7 @@ class Config:
 
     def _load(self) -> None:
         """Load config from TOML file, falling back to defaults."""
-        self._data = DEFAULT_CONFIG.copy()
+        self._data = copy.deepcopy(DEFAULT_CONFIG)
         if self.config_file.exists() and tomllib is not None:
             with open(self.config_file, "rb") as f:
                 file_data = tomllib.load(f)
@@ -121,9 +123,9 @@ class Config:
 
     @property
     def llm_mode(self) -> str:
-        mode = os.environ.get("CYBERSENTRY_LLM_MODE") or self.get("general", "llm_mode", default="production")
+        mode = os.environ.get("CYBERSENTRY_LLM_MODE") or self.get("general", "llm_mode", default="local")
         mode = str(mode).strip().lower()
-        return mode if mode in {"production", "local"} else "production"
+        return mode if mode in {"production", "local"} else "local"
 
     @property
     def llm_base_url(self) -> str:
@@ -139,13 +141,13 @@ class Config:
     def chat_model(self) -> str:
         if self.using_local_llm:
             return self.get("local_llm", "chat_model", default="qwen2.5-coder:7b")
-        return self.get("general", "chat_model", default="openai/gpt-4o-mini")
+        return self.get("openrouter", "chat_model", default="openai/gpt-4o-mini")
 
     @property
     def coding_model(self) -> str:
         if self.using_local_llm:
             return self.get("local_llm", "coding_model", default="qwen2.5-coder:7b")
-        return self.get("general", "coding_model", default="qwen/qwen3-coder:free")
+        return self.get("openrouter", "coding_model", default="qwen/qwen3-coder:free")
 
     @property
     def temperature(self) -> float:
@@ -189,7 +191,7 @@ class Config:
 
     @property
     def llm_backend_label(self) -> str:
-        return "Ollama" if self.using_local_llm else "OpenRouter"
+        return "Ollama (primary)" if self.using_local_llm else "OpenRouter (backup)"
 
     @property
     def is_initialized(self) -> bool:

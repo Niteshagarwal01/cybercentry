@@ -12,7 +12,7 @@ def insecure_login_lookup(username: str):
     """SQL injection: direct string concatenation."""
     conn = sqlite3.connect("users.db")
     cur = conn.cursor()
-    query = "SELECT * FROM users WHERE username = ?"
+    query = "SELECT * FROM users WHERE username = '" + username + "'"
     cur.execute(query)
     return cur.fetchone()
 

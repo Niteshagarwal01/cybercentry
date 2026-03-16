@@ -17,6 +17,7 @@ from cyber_sentry_cli.core.models import (
     Finding,
     JudgeScore,
 )
+from cyber_sentry_cli.core.utils import parse_llm_json
 from cyber_sentry_cli.integrations.openrouter import OpenRouterClient
 from cyber_sentry_cli.reasoning.prompts import JUDGE_EVALUATION_USER, JUDGE_SYSTEM
 
@@ -98,20 +99,9 @@ class JudgeAgent:
         self, response: str
     ) -> tuple[list[JudgeScore], AgentRole | None, str]:
         """Parse the judge's JSON response into scores."""
-        try:
-            data = json.loads(response)
-        except json.JSONDecodeError:
-            try:
-                if "```json" in response:
-                    json_str = response.split("```json")[1].split("```")[0].strip()
-                    data = json.loads(json_str)
-                elif "```" in response:
-                    json_str = response.split("```")[1].split("```")[0].strip()
-                    data = json.loads(json_str)
-                else:
-                    return [], None, "Failed to parse judge response"
-            except (json.JSONDecodeError, IndexError):
-                return [], None, "Failed to parse judge response"
+        data = parse_llm_json(response)
+        if not data:
+            return [], None, "Failed to parse judge response"
 
         scores: list[JudgeScore] = []
         role_map = {

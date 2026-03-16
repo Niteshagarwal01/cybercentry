@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import time
 from pathlib import Path
@@ -23,6 +24,7 @@ from rich.theme import Theme
 
 from cyber_sentry_cli.core.config import Config
 from cyber_sentry_cli.core.models import Finding
+from cyber_sentry_cli.core.utils import safe_resolve_path
 from cyber_sentry_cli.output.terminal import (
     CYBER_THEME,
     console,
@@ -109,7 +111,9 @@ To call a tool emit exactly this block (nothing else on that line):
 {{"tool": "tool_name", "args": {{"arg1": "value1"}}}}
 ```
 
-After a tool result: interpret it with technical depth, state risk severity, and recommend the next action.
+CRITICAL INSTRUCTION: Once you emit a ```tool block, you MUST STOP GENERATING TEXT IMMEDIATELY. Do NOT hallucinate the tool result! Wait for the user to provide the tool result back to you before continuing.
+
+After a tool result (provided by the user): interpret it with technical depth, state risk severity, and recommend the next action.
 Before applying any patch: show the exact unified diff and wait for explicit user confirmation.
 
 Project: {project_path}
@@ -241,25 +245,55 @@ def execute_tool(tool_name: str, args: dict, config: Config) -> str:
 def _tool_scan(target: str, config: Config) -> str:
     """Run a scan and return results summary."""
     from cyber_sentry_cli.commands.scan import scan_command
+    from cyber_sentry_cli.core.run_state import RunStateManager
+
     print_step("Scanning", target)
     scan_command(target, "auto")
-    return "Scan complete. Use `triage_findings` to cluster results."
+
+    state = RunStateManager(config)
+    runs = state.list_runs()
+    if not runs:
+        return "Scan finished but no run was found on disk."
+
+    run = state.load_run(runs[0])
+    return (
+        f"Scan complete. run_id={run.id}; findings={run.total_findings}. "
+        "Use triage_findings with this run_id next."
+    )
 
 
 def _tool_triage(run_id: str, config: Config) -> str:
     """Run triage and return results."""
     from cyber_sentry_cli.commands.triage import triage_command
+    from cyber_sentry_cli.core.run_state import RunStateManager
+
     print_step("Triaging findings", f"run: {run_id}")
     triage_command(run_id)
-    return "Triage complete. Clusters identified."
+
+    state = RunStateManager(config)
+    effective_run_id = run_id
+    if run_id == "latest":
+        runs = state.list_runs()
+        if runs:
+            effective_run_id = runs[0]
+
+    try:
+        run = state.load_run(effective_run_id)
+        return f"Triage complete. run_id={run.id}; clusters={len(run.clusters)}."
+    except Exception:
+        return "Triage complete."
 
 
 def _tool_read_file(path: str) -> str:
     """Read a file and return its contents."""
     try:
-        p = Path(path)
+        p = safe_resolve_path(path, Path.cwd())
+        if p is None:
+            return "Path rejected: must stay inside the project directory."
         if not p.exists():
             return f"File not found: {path}"
+        if p.is_dir():
+            return f"Path is a directory: {p}"
         content = p.read_text(encoding="utf-8", errors="replace")
         if len(content) > 3000:
             content = content[:3000] + f"\n... (truncated, {len(content)} chars total)"
@@ -270,15 +304,33 @@ def _tool_read_file(path: str) -> str:
 
 def _tool_search(pattern: str, path: str) -> str:
     """Search for a pattern in files."""
-    import subprocess
-
+    if not pattern:
+        return "Search error: empty pattern"
     try:
-        result = subprocess.run(
-            ["findstr", "/s", "/n", "/i", pattern, f"{path}\\*.*"],
-            capture_output=True, text=True, timeout=10,
-            cwd=Path.cwd(),
-        )
-        output = result.stdout.strip()
+        base = safe_resolve_path(path, Path.cwd())
+        if base is None:
+            return "Search error: path rejected (outside project directory)"
+        if not base.exists():
+            return f"Search error: path does not exist: {path}"
+
+        matches: list[str] = []
+        regex = re.compile(pattern, re.IGNORECASE)
+        for file_path in base.rglob("*.py"):
+            try:
+                text = file_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+
+            for line_no, line in enumerate(text.splitlines(), 1):
+                if regex.search(line):
+                    rel = file_path.relative_to(Path.cwd())
+                    matches.append(f"{rel}:{line_no}: {line.strip()}")
+                    if len(matches) >= 80:
+                        break
+            if len(matches) >= 80:
+                break
+
+        output = "\n".join(matches)
         if len(output) > 2000:
             output = output[:2000] + "\n... (truncated)"
         return output or "No matches found."

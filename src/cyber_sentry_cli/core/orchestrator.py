@@ -12,6 +12,7 @@ from rich.console import Console
 from cyber_sentry_cli.core.config import Config
 from cyber_sentry_cli.core.events import emit
 from cyber_sentry_cli.core.models import EventType
+from cyber_sentry_cli.core.utils import parse_llm_json, safe_resolve_path
 from cyber_sentry_cli.integrations.openrouter import OpenRouterClient
 from cyber_sentry_cli.reasoning.prompts import REACT_SYSTEM
 
@@ -23,13 +24,16 @@ console = Console()
 # ---------------------------------------------------------------------------
 
 def _tool_read_file(params: dict) -> str:
-    """Read contents of a file."""
-    path = Path(params.get("path", ""))
+    """Read contents of a file (sandboxed to project root)."""
+    raw = params.get("path", "")
+    project_root = Path.cwd()
+    path = safe_resolve_path(raw, project_root)
+    if path is None:
+        return f"Error: Path rejected (must be inside project root {project_root})"
     if not path.exists():
         return f"Error: File not found: {path}"
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
-        # Limit output size
         if len(content) > 5000:
             content = content[:5000] + "\n... [truncated]"
         return content
@@ -38,48 +42,48 @@ def _tool_read_file(params: dict) -> str:
 
 
 def _tool_search_pattern(params: dict) -> str:
-    """Search for a regex/string pattern across files."""
+    """Search for a string pattern across Python files (cross-platform, pure Python)."""
     import re
-    import subprocess
 
     pattern = params.get("pattern", "")
     directory = params.get("directory", ".")
+    if not pattern:
+        return "Error: no pattern provided."
 
+    matches: list[str] = []
     try:
-        result = subprocess.run(
-            ["grep", "-rn", "--include=*.py", pattern, directory],
-            capture_output=True, text=True, timeout=30,
-        )
-        output = result.stdout
-        if len(output) > 3000:
-            output = output[:3000] + "\n... [truncated]"
-        return output or "No matches found."
-    except FileNotFoundError:
-        # Fallback for Windows
-        matches = []
-        try:
-            for py_file in Path(directory).rglob("*.py"):
-                try:
-                    content = py_file.read_text(encoding="utf-8", errors="replace")
-                    for i, line in enumerate(content.splitlines(), 1):
-                        if pattern.lower() in line.lower():
-                            matches.append(f"{py_file}:{i}: {line.strip()}")
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        return "\n".join(matches[:50]) if matches else "No matches found."
+        for py_file in Path(directory).rglob("*.py"):
+            try:
+                content = py_file.read_text(encoding="utf-8", errors="replace")
+                for i, line in enumerate(content.splitlines(), 1):
+                    if re.search(pattern, line, re.IGNORECASE):
+                        matches.append(f"{py_file}:{i}: {line.strip()}")
+                        if len(matches) >= 50:
+                            break
+            except Exception:
+                continue
+            if len(matches) >= 50:
+                break
     except Exception as e:
         return f"Error: {e}"
 
+    output = "\n".join(matches)
+    if len(output) > 3000:
+        output = output[:3000] + "\n... [truncated]"
+    return output or "No matches found."
+
 
 def _tool_list_files(params: dict) -> str:
-    """List files in a directory."""
-    directory = Path(params.get("directory", "."))
-    pattern = params.get("pattern", "*.py")
+    """List files in a directory (sandboxed to project root)."""
+    raw = params.get("directory", ".")
+    project_root = Path.cwd()
+    directory = safe_resolve_path(raw, project_root)
+    if directory is None:
+        return f"Error: Path rejected (must be inside project root {project_root})"
+    file_pattern = params.get("pattern", "*.py")
 
     try:
-        files = list(directory.rglob(pattern))
+        files = list(directory.rglob(file_pattern))
         result = [str(f) for f in files[:50]]
         return "\n".join(result) if result else "No files found."
     except Exception as e:
@@ -183,17 +187,8 @@ class ReActOrchestrator:
 
     def _parse_step(self, response: str) -> dict:
         """Parse a ReAct step response."""
-        try:
-            return json.loads(response)
-        except json.JSONDecodeError:
-            try:
-                if "```json" in response:
-                    json_str = response.split("```json")[1].split("```")[0].strip()
-                    return json.loads(json_str)
-                elif "```" in response:
-                    json_str = response.split("```")[1].split("```")[0].strip()
-                    return json.loads(json_str)
-            except (json.JSONDecodeError, IndexError):
-                pass
-        # Fallback
+        result = parse_llm_json(response)
+        if result:
+            return result
+        # Fallback: treat the raw text as a finish action
         return {"thought": response[:200], "action": "finish", "action_input": {"summary": response}}

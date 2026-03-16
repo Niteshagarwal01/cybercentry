@@ -2,6 +2,7 @@
 
 ## One-line Product
 CyberSentry is an autonomous security engineer for development teams that not only finds vulnerabilities, but reasons about root causes across the whole codebase, debates the best fix with specialist AI agents, and prepares human-approved patches with full decision transparency.
+It can also scan authorized website URLs to detect common web security misconfigurations and risky patterns.
 
 ## Vision
 Make security remediation as fast, explainable, and developer-friendly as code autocomplete.
@@ -13,12 +14,14 @@ Current scanners produce long lists of findings but leave teams with hard unreso
 - Limited guidance on safest, production-ready remediation
 - No transparent reasoning trail for trust and audit
 - Security triage still requires expensive senior expertise
+- Web properties are often deployed with weak headers, exposed endpoints, and security misconfigurations that code-only scans miss
 
 ## Target Users
 Primary users:
 - Startup and SMB engineering teams without full-time AppSec
 - Platform and DevSecOps teams in mid-size companies
 - Security champions inside product engineering squads
+- Teams responsible for production web apps and customer-facing portals
 
 Secondary users:
 - Security auditors and compliance teams
@@ -33,6 +36,7 @@ What users get:
 - Lower false-confidence through root-cause clustering
 - Higher trust through live thought trace and explainability
 - Safer rollout with mandatory human approval before apply
+- Broader coverage by combining code scan + authorized URL web scan findings
 
 ## Product Pillars
 1. Autonomous Investigation
@@ -56,15 +60,15 @@ What users get:
 ## Product Form
 CyberSentry should be delivered as two connected surfaces:
 
-1. CLI-first engine (build first)
-- Fast to ship
-- Developer-native workflow
-- Strong hackathon demo reliability
+1. Web UI + API (primary for organizations)
+- Scan launch and monitoring from browser
+- Findings workspace, debate trace, and approval center
+- Executive-friendly risk and compliance reporting
 
-2. Realtime web console (build next)
-- Live thought trace for observability
-- Team collaboration and approvals
-- Executive-friendly risk view
+2. CLI engine (developer and CI power path)
+- Fast automation in pipelines
+- Advanced users and debugging workflows
+- Same backend and artifact model as UI
 
 ## CLI Command Model (MVP)
 - cs init: create project config and baseline policies
@@ -75,6 +79,7 @@ CyberSentry should be delivered as two connected surfaces:
 - cs patch <finding-id> --dry-run: generate patch diff only
 - cs report <run-id>: export json and markdown summaries
 - cs trace <run-id>: replay full reasoning and tool timeline
+- cs webscan <url>: scan authorized website URL and report web-layer security issues
 
 ## End-to-End User Flow
 1. Developer runs scan on repo
@@ -84,6 +89,12 @@ CyberSentry should be delivered as two connected surfaces:
 5. Patch candidate is generated as diff
 6. Human reviews, approves, or rejects
 7. Report is exported for team and compliance evidence
+
+Website flow:
+1. User submits authorized URL target
+2. CyberSentry performs safe crawl and HTTP security checks
+3. Findings are normalized with severity and evidence
+4. Report is exported and prioritized remediation guidance is generated
 
 ## Technical Direction
 Backend and orchestration:
@@ -98,6 +109,7 @@ Intelligence layer:
 Future platform layer:
 - FastAPI + WebSocket event streaming for live UI
 - Policy engine and guardrails between tools and model
+- Web scan worker service with rate limits and safety constraints
 
 ## Differentiation
 CyberSentry is not another scanner dashboard.
@@ -108,6 +120,7 @@ Key differentiators:
 - Competitive multi-agent debate before suggesting fixes
 - Human-readable and machine-auditable thought trace
 - Human approval gate as a first-class safety control
+- Hybrid AppSec: static code analysis plus authorized live web surface scanning
 
 ## Business Model
 Initial pricing direction:
@@ -157,6 +170,7 @@ Month 2:
 Month 3:
 - Ship realtime thought trace web console
 - Add approval workflow and CI integration preview
+- Ship URL web scan MVP with safe crawler, header checks, and risk report
 
 ## Demo Narrative
 - Start with noisy raw scan output problem

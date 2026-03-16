@@ -3,29 +3,19 @@
 
 from __future__ import annotations
 
-import json
-
 import typer
+from pathlib import Path
 from rich.console import Console
-
 from typing import Optional
 
 from cyber_sentry_cli.core.config import Config
 from cyber_sentry_cli.core.models import DebateSession, Finding, PatchCandidate
 from cyber_sentry_cli.core.run_state import RunStateManager
+from cyber_sentry_cli.core.utils import find_finding_by_id, safe_resolve_path
 from cyber_sentry_cli.output.terminal import print_error, print_info, print_success
 from cyber_sentry_cli.remediation.diff import render_before_after, render_diff
 
 console = Console()
-
-
-def _find_finding(findings: list[Finding], finding_id: str) -> Finding:
-    """Find a finding by ID or prefix, raising Exit if not found."""
-    for f in findings:
-        if f.id == finding_id or f.id.startswith(finding_id):
-            return f
-    print_error(f"Finding not found: {finding_id}")
-    raise typer.Exit(code=1)
 
 
 def _resolve_run_id(state: RunStateManager, run_id: str) -> str:
@@ -55,7 +45,30 @@ def patch_command(finding_id: str, run_id: str = "latest", dry_run: bool = True)
         raise typer.Exit(code=1)
 
     # Find the finding
-    finding: Finding = _find_finding(run.findings, finding_id)
+    finding = find_finding_by_id(run.findings, finding_id)
+    if not finding:
+        print_error(f"Finding not found: {finding_id}")
+        raise typer.Exit(code=1)
+
+    # Web findings do not map to local file patches; provide remediation actions instead.
+    if finding.scanner == "webscan" or finding.file_path.startswith(("http://", "https://")):
+        remediation_text = _web_remediation_for_finding(finding)
+        state.save_artifact(
+            run_id,
+            f"patch_{finding.id}",
+            {
+                "finding_id": finding.id,
+                "scanner": finding.scanner,
+                "target": finding.file_path,
+                "guidance": remediation_text,
+                "mode": "web-remediation",
+            },
+        )
+        console.print()
+        print_info("This finding is from website scanning and cannot be auto-patched in local source files.")
+        print_info(f"Suggested remediation: {remediation_text}")
+        print_success(f"Remediation artifact saved to run {run_id}")
+        return
 
     # Try to load debate session
     session: Optional[DebateSession] = None
@@ -107,10 +120,11 @@ def patch_command(finding_id: str, run_id: str = "latest", dry_run: bool = True)
 
 
 def _apply_patch(patch: PatchCandidate) -> bool:
-    """Apply the patch to the actual file."""
-    from pathlib import Path
-
-    target_file = Path(patch.file_path)
+    """Apply the patch to the actual file (sandboxed to project root)."""
+    target_file = safe_resolve_path(patch.file_path, Path.cwd())
+    if not target_file:
+        print_error(f"Rejected: path '{patch.file_path}' is outside the project root.")
+        return False
     if not target_file.exists():
         print_error(f"Target file not found: {target_file}")
         return False
@@ -137,3 +151,24 @@ def _apply_patch(patch: PatchCandidate) -> bool:
     else:
         print_error("Could not find original code in file. Manual patching may be needed.")
     return False
+
+
+def _web_remediation_for_finding(finding: Finding) -> str:
+    guidance = {
+        "WS001:insecure-transport": "Enforce HTTPS and redirect all HTTP to HTTPS.",
+        "WS002:missing-hsts": "Set Strict-Transport-Security with secure max-age.",
+        "WS003:missing-csp": "Define a strict Content-Security-Policy.",
+        "WS004:missing-xfo": "Add X-Frame-Options DENY or SAMEORIGIN.",
+        "WS005:missing-xcto": "Add X-Content-Type-Options: nosniff.",
+        "WS006:missing-referrer-policy": "Add Referrer-Policy strict-origin-when-cross-origin or stricter.",
+        "WS007:verbose-server-banner": "Reduce or remove server/version header disclosure.",
+        "WS008:cookie-no-httponly": "Set HttpOnly on sensitive cookies.",
+        "WS009:cookie-no-secure": "Set Secure on sensitive cookies.",
+        "WS010:cookie-no-samesite": "Set SameSite=Lax or Strict on sensitive cookies.",
+        "WS011:insecure-form-action": "Use HTTPS-only form action endpoints.",
+        "WS000:request-error": "Verify target reachability and scan scope permissions.",
+    }
+    return guidance.get(
+        finding.rule_id,
+        "Review web server/application security configuration and apply secure defaults.",
+    )

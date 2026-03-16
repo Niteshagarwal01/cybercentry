@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from contextlib import contextmanager
+from typing import Any, Iterator, Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -15,6 +16,7 @@ console = Console()
 
 # In-memory event store for the current run
 _events: list[Event] = []
+_current_run_id: str = ""
 
 
 def emit(
@@ -26,8 +28,9 @@ def emit(
     silent: bool = False,
 ) -> Event:
     """Create and store an event, optionally printing it to the terminal."""
+    effective_run_id = run_id or _current_run_id
     event = Event(
-        run_id=run_id,
+        run_id=effective_run_id,
         event_type=event_type,
         agent_role=agent_role,
         content=content,
@@ -51,6 +54,19 @@ def get_events(run_id: str = "") -> list[Event]:
 def clear_events() -> None:
     """Clear the in-memory event store."""
     _events.clear()
+
+
+@contextmanager
+def scoped_run(run_id: str) -> Iterator[None]:
+    """Context manager that sets the current run ID and clears stale events on entry."""
+    global _current_run_id  # noqa: PLW0603
+    previous = _current_run_id
+    clear_events()
+    _current_run_id = run_id
+    try:
+        yield
+    finally:
+        _current_run_id = previous
 
 
 def events_to_dicts(run_id: str = "") -> list[dict[str, Any]]:
@@ -80,6 +96,18 @@ _STYLE_MAP: dict[EventType, tuple[str, str]] = {
 
 
 def _print_event(event: Event) -> None:
+    # Feed into live dashboard if one is active
+    try:
+        from cyber_sentry_cli.output.dashboard import get_active_dashboard
+        dash = get_active_dashboard()
+        if dash is not None:
+            role = event.agent_role.value if event.agent_role else ""
+            dash.add_event(event.event_type.value, event.content, agent_role=role)
+            return  # dashboard handles rendering; skip duplicate console print
+    except ImportError:
+        pass
+
+    # Fallback: plain terminal output when no dashboard is running
     icon, style = _STYLE_MAP.get(event.event_type, ("•", "white"))
     role_tag = f" [{event.agent_role.value}]" if event.agent_role else ""
     header = f"{icon} {event.event_type.value}{role_tag}"

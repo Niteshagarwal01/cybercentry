@@ -152,7 +152,9 @@ class TestFindTool:
         # python should always be findable in the same dir as sys.executable
         import sys
         result = find_tool("python") or find_tool("python.exe")
-        assert result is not None or True  # best-effort, don't fail if python not on PATH
+        if result is None:
+            pytest.skip("Python executable not discoverable on PATH in this environment")
+        assert result is not None
 
 
 # ---------------------------------------------------------------------------

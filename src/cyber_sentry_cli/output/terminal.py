@@ -21,6 +21,7 @@ from rich.text import Text
 from rich.syntax import Syntax
 from rich.theme import Theme
 
+from cyber_sentry_cli import __version__
 from cyber_sentry_cli.core.models import Finding, Severity, Cluster, JudgeScore, AgentRole
 
 # ---------------------------------------------------------------------------
@@ -55,16 +56,23 @@ console = Console(theme=CYBER_THEME)
 
 def print_banner() -> None:
     """Print an animated-style premium banner."""
-    banner_width = 109
-    if console.width < banner_width + 4:
-        if console.width < 72:
+    banner_width = 67
+    
+    # When piped or redirected, console.width might be small or None
+    try:
+        width = console.width
+    except Exception:
+        width = 80
+        
+    if width < banner_width + 4:
+        if width < 72:
             print_mini_banner()
             return
 
         brand = Text()
         brand.append("  CYBER", style="bold bright_red")
         brand.append("SENTRY", style="bold bright_white")
-        version = Text("  Autonomous Security Engineer  •  v0.1.0  •  Hunt. Debate. Defend.", style="bright_cyan")
+        version = Text(f"  Autonomous Security Engineer  •  v{__version__}  •  Hunt. Debate. Defend.", style="bright_cyan")
 
         console.print()
         console.print(Align.center(brand))
@@ -94,7 +102,7 @@ def print_banner() -> None:
     tagline.append("  ⚡ ", style="bright_yellow")
     tagline.append("Autonomous Security Engineer", style="bold bright_white")
     tagline.append("  •  ", style="dim")
-    tagline.append("v0.1.0", style="bright_cyan")
+    tagline.append(f"v{__version__}", style="bright_cyan")
     tagline.append("  •  ", style="dim")
     tagline.append("Hunt. Debate. Defend.", style="italic bright_red")
 
@@ -110,7 +118,7 @@ def print_mini_banner() -> None:
     line = Text()
     line.append("  🛡️  ", style="bright_red")
     line.append("CyberSentry", style="bold bright_white")
-    line.append(" v0.1.0", style="dim bright_cyan")
+    line.append(f" v{__version__}", style="dim bright_cyan")
     console.print(line)
     console.print(Rule(style="grey37", characters="─"))
     console.print()
@@ -351,3 +359,121 @@ def create_scan_progress() -> Progress:
         TimeElapsedColumn(),
         console=console,
     )
+
+
+# ---------------------------------------------------------------------------
+# Rich terminal report
+# ---------------------------------------------------------------------------
+
+def print_rich_report(run: object) -> None:
+    """Print a full structured security report to the terminal."""
+    from collections import Counter
+    from cyber_sentry_cli.core.models import Run
+    if not isinstance(run, Run):
+        return
+
+    sev_counts = Counter(f.severity.value for f in run.findings)
+    criticals = sev_counts.get("CRITICAL", 0)
+    highs = sev_counts.get("HIGH", 0)
+    if criticals:
+        risk_text = Text("CRITICAL RISK", style="bold bright_red")
+    elif highs:
+        risk_text = Text("HIGH RISK", style="bold red")
+    elif sev_counts:
+        risk_text = Text("MODERATE RISK", style="bold yellow")
+    else:
+        risk_text = Text("CLEAN", style="bold bright_green")
+
+    # Header
+    header_grid = Table.grid(expand=True, padding=(0, 2))
+    header_grid.add_column(ratio=3)
+    header_grid.add_column(ratio=1, justify="right")
+    meta = Text()
+    meta.append("Run:      ", style="dim")
+    meta.append(run.id + "\n", style="cyan")
+    meta.append("Target:   ", style="dim")
+    meta.append(run.target + "\n", style="white")
+    meta.append("Findings: ", style="dim")
+    meta.append(str(run.total_findings), style="bold yellow")
+    header_grid.add_row(meta, risk_text)
+    console.print(Panel(
+        header_grid,
+        title="[bold bright_white]CyberSentry Security Report[/]",
+        border_style="bright_cyan",
+        box=ROUNDED,
+        padding=(1, 2),
+    ))
+
+    # Severity table
+    sev_table = Table(box=SIMPLE, show_header=True, header_style="bold bright_white", padding=(0, 2))
+    sev_table.add_column("Severity", style="bold", min_width=12)
+    sev_table.add_column("Count", justify="right", min_width=6)
+    sev_table.add_column("Bar", min_width=22)
+    sev_styles = {
+        "CRITICAL": "bold red",
+        "HIGH":     "red",
+        "MEDIUM":   "yellow",
+        "LOW":      "blue",
+        "INFO":     "dim",
+    }
+    for sev, style in sev_styles.items():
+        count = sev_counts.get(sev, 0)
+        bar = "|" * min(count, 20) if count else "-"
+        sev_table.add_row(
+            Text(sev, style=style),
+            Text(str(count), style=style if count else "dim"),
+            Text(bar, style=style if count else "dim"),
+        )
+    console.print()
+    console.print(Panel(
+        sev_table,
+        title="[bold]Severity Breakdown[/]",
+        border_style="bright_cyan",
+        box=ROUNDED,
+        padding=(0, 1),
+    ))
+
+    # Findings
+    if run.findings:
+        console.print()
+        findings_sorted = sorted(
+            run.findings,
+            key=lambda f: ["CRITICAL","HIGH","MEDIUM","LOW","INFO"].index(f.severity.value),
+        )
+        print_findings_table(findings_sorted[:50])
+        if len(run.findings) > 50:
+            console.print(f"  [dim]... {len(run.findings)-50} more findings in REPORT.md[/dim]")
+    else:
+        console.print()
+        console.print(Panel("No security findings detected. Your code looks clean!", border_style="bright_green", padding=(1, 2)))
+
+    # Clusters
+    if run.clusters:
+        console.print()
+        cluster_table = Table(box=SIMPLE, show_header=True, header_style="bold bright_white", padding=(0, 2), expand=True)
+        cluster_table.add_column("#", justify="right", min_width=3, style="dim")
+        cluster_table.add_column("Root Cause", min_width=35)
+        cluster_table.add_column("Findings", justify="right", min_width=8)
+        cluster_table.add_column("Risk", justify="right", min_width=6)
+        for i, c in enumerate(run.clusters, 1):
+            score_style = "bright_red" if c.risk_score >= 0.8 else ("yellow" if c.risk_score >= 0.5 else "dim")
+            cluster_table.add_row(str(i), c.root_cause[:55], str(len(c.finding_ids)), Text(f"{c.risk_score:.2f}", style=score_style))
+        console.print(Panel(cluster_table, title="[bold]Root Cause Clusters[/]", border_style="bright_cyan", box=ROUNDED, padding=(0, 1)))
+
+    # Next steps
+    console.print()
+    steps = Table.grid(padding=(0, 2))
+    steps.add_column(min_width=3, justify="right")
+    steps.add_column(min_width=40)
+    steps.add_column()
+    rows = [("1.", f"[cyan]cs triage {run.id}[/]", "Cluster by root cause")]
+    if run.findings:
+        top = sorted(run.findings, key=lambda f: ["CRITICAL","HIGH","MEDIUM","LOW","INFO"].index(f.severity.value))[0]
+        rows += [
+            ("2.", f"[cyan]cs debate {top.id}[/]", f"Debate: {top.title[:35]}"),
+            ("3.", f"[cyan]cs patch {top.id}[/]", "Generate AI patch"),
+        ]
+    rows.append(("4.", f"[cyan]cs trace {run.id}[/]", "Replay AI reasoning trace"))
+    for step in rows:
+        steps.add_row(Text(step[0], style="dim"), Text.from_markup(step[1]), Text(step[2], style="dim"))
+    console.print(Panel(steps, title="[bold]Next Steps[/]", border_style="bright_cyan", box=ROUNDED, padding=(0, 1)))

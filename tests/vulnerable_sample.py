@@ -18,7 +18,7 @@ def get_user(username):
     """Vulnerable to SQL injection — unsanitized user input in query."""
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
-    query = "SELECT * FROM users WHERE username = %s"; cursor.execute(query, (username,))
+    query = "SELECT * FROM users WHERE username = '" + username + "'"
     cursor.execute(query)
     return cursor.fetchone()
 
@@ -27,7 +27,8 @@ def search_products(keyword):
     """Another SQL injection — f-string in query."""
     conn = sqlite3.connect("shop.db")
     cursor = conn.cursor()
-    cursor.execute(f"SELECT * FROM products WHERE name LIKE '%{keyword}%'")
+    query = f"SELECT * FROM products WHERE name LIKE '%{keyword}%'"
+    cursor.execute(query)
     return cursor.fetchall()
 
 
@@ -72,7 +73,7 @@ def dynamic_import(module_name):
 def ping_host(hostname):
     """Vulnerable to command injection — shell=True with user input."""
     result = subprocess.run(
-        f"ping -c 1 {hostname}",
+        f"ping -n 1 {hostname}",
         shell=True,
         capture_output=True,
         text=True,

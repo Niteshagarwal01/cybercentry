@@ -30,12 +30,19 @@ def trace_command(run_id: str) -> None:
             raise typer.Exit(code=1)
         run_id = runs[0]
 
+    # Load run data for finding/report context
+    try:
+        run = state.load_run(run_id)
+    except FileNotFoundError:
+        print_error(f"Run not found: {run_id}")
+        raise typer.Exit(code=1)
+
     # Load events
     try:
         events = state.load_artifact(run_id, "events")
     except FileNotFoundError:
         print_error(f"No trace data found for run: {run_id}")
-        print_info("Events are recorded during [cyan]cs scan[/cyan] and [cyan]cs debate[/cyan].")
+        print_info("Events are recorded during [cyan]cs scan[/cyan], [cyan]cs webscan[/cyan], and [cyan]cs debate[/cyan].")
         raise typer.Exit(code=1)
 
     if not events:
@@ -55,7 +62,7 @@ def trace_command(run_id: str) -> None:
     style_map = {
         "THINK": ("💭", "cyan"),
         "ACT": ("⚡", "yellow"),
-        "OBSERVE": ("👁️ ", "green"),
+        "OBSERVE": ("👁️", "green"),
         "PIVOT": ("🔄", "magenta"),
         "TOOL_CALL": ("🔧", "yellow"),
         "TOOL_RESULT": ("📋", "green"),
@@ -91,5 +98,34 @@ def trace_command(run_id: str) -> None:
             for line in content.split("\n"):
                 console.print(f"    [dim]│[/dim] {line}")
         console.print()
+
+    # Findings summary and artifact paths
+    console.print(Panel(
+        f"[bold]Findings Summary[/bold]\n"
+        f"Total findings: [cyan]{run.total_findings}[/cyan]\n"
+        f"Scanners: {', '.join(run.scanners_used) if run.scanners_used else 'N/A'}",
+        border_style="cyan",
+    ))
+    if run.findings:
+        top = run.findings[:10]
+        for finding in top:
+            console.print(
+                f"  • [{finding.severity.color}]{finding.severity.value}[/] "
+                f"{finding.id}  {finding.rule_id}  {finding.file_path}"
+            )
+        if len(run.findings) > len(top):
+            console.print(f"  [dim]... {len(run.findings) - len(top)} more findings[/dim]")
+    else:
+        console.print("  [dim]No findings in this run.[/dim]")
+
+    run_dir = state.get_run_dir(run_id)
+    report_path = run_dir / "REPORT.md"
+    remediation_path = run_dir / "WEB_REMEDIATION.md"
+    if report_path.exists() or remediation_path.exists():
+        console.print()
+        if report_path.exists():
+            print_info(f"Report: [cyan]{report_path}[/cyan]")
+        if remediation_path.exists():
+            print_info(f"Web remediation: [cyan]{remediation_path}[/cyan]")
 
     print_success(f"Trace replay complete. {len(events)} events.")

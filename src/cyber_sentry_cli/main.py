@@ -80,6 +80,33 @@ def cmd_scan(
     scan_command(target, scanners)
 
 
+@app.command("webscan")
+def cmd_webscan(
+    url: str = typer.Argument(help="Website URL to scan (http/https)"),
+    i_own_this_target: bool = typer.Option(
+        False,
+        "--i-own-this-target",
+        help="Required acknowledgement that you own or are authorized to test this target.",
+    ),
+    max_pages: int = typer.Option(30, "--max-pages", min=1, max=500, help="Maximum pages to crawl"),
+    max_depth: int = typer.Option(2, "--max-depth", min=0, max=10, help="Maximum crawl depth"),
+    timeout: float = typer.Option(8.0, "--timeout", min=1.0, max=60.0, help="Per-request timeout seconds"),
+    rate_limit_ms: int = typer.Option(150, "--rate-limit-ms", min=0, max=5000, help="Delay between requests"),
+) -> None:
+    """Run authorized website URL scan for common web security issues."""
+    from cyber_sentry_cli.commands.webscan import webscan_command
+
+    print_banner()
+    webscan_command(
+        url,
+        i_own_this_target=i_own_this_target,
+        max_pages=max_pages,
+        max_depth=max_depth,
+        timeout=timeout,
+        rate_limit_ms=rate_limit_ms,
+    )
+
+
 @app.command("triage")
 def cmd_triage(
     run_id: str = typer.Argument(help="Run ID to triage (use 'latest' for most recent)"),
@@ -133,6 +160,19 @@ def cmd_trace(
     from cyber_sentry_cli.commands.trace import trace_command
     print_mini_banner()
     trace_command(run_id)
+
+
+@app.command("ui")
+def cmd_ui(
+    host: str = typer.Option("127.0.0.1", "--host", help="UI server bind host"),
+    port: int = typer.Option(8080, "--port", help="UI server port"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for development"),
+) -> None:
+    """Launch CyberSentry web UI and API server."""
+    from cyber_sentry_cli.commands.ui import ui_command
+
+    print_mini_banner()
+    ui_command(host=host, port=port, reload=reload)
 
 
 # ---------------------------------------------------------------------------

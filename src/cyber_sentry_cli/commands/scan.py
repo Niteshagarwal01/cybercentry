@@ -7,12 +7,12 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cyber_sentry_cli.core.config import Config
-from cyber_sentry_cli.core.events import emit
+from cyber_sentry_cli.core.events import emit, scoped_run
 from cyber_sentry_cli.core.models import EventType, Finding
 from cyber_sentry_cli.core.run_state import RunStateManager
+from cyber_sentry_cli.output.dashboard import live_dashboard
 from cyber_sentry_cli.output.terminal import (
     print_error,
     print_findings_table,
@@ -42,8 +42,9 @@ def scan_command(target: str, scanners: str = "auto") -> None:
     run = state.create_run(target=str(target_path))
     display_target = target if len(target) <= 72 else target_path.name
 
-    emit(EventType.INFO, f"Starting scan on: {display_target}", run_id=run.id)
-    console.print()
+    with scoped_run(run.id):
+        emit(EventType.INFO, f"Starting scan on: {display_target}", run_id=run.id)
+        console.print()
 
     # -- Determine which scanners to use ------------------------------------
     available_scanners = []
@@ -70,44 +71,46 @@ def scan_command(target: str, scanners: str = "auto") -> None:
         state.fail_run(run, "No scanners available")
         raise typer.Exit(code=1)
 
-    # -- Run scanners -------------------------------------------------------
-    all_findings: list[Finding] = []
+        # -- Run scanners (inside live thought-trace dashboard) -------------
+        all_findings: list[Finding] = []
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        for scanner in available_scanners:
-            task = progress.add_task(f"Running {scanner.name}...")
-            emit(EventType.ACT, f"Running scanner: {scanner.name}", run_id=run.id, silent=True)
+        with live_dashboard(title="Scanning codebase", target=display_target) as dash:
+            dash.set_status("Initialising scanners…", stage="initialising")
 
-            try:
-                findings = scanner.scan(target_path)
-                all_findings.extend(findings)
-                run.scanners_used.append(scanner.name)
-                emit(
-                    EventType.OBSERVE,
-                    f"{scanner.name} found {len(findings)} issue(s)",
-                    run_id=run.id,
-                    silent=True,
-                )
-            except Exception as e:
-                emit(EventType.ERROR, f"{scanner.name} failed: {e}", run_id=run.id)
-            finally:
-                progress.update(task, completed=True)
+            for scanner in available_scanners:
+                dash.set_status(f"Running {scanner.name}…", stage=f"scanner:{scanner.name}")
+                emit(EventType.ACT, f"Running scanner: {scanner.name}", run_id=run.id)
 
-    # -- Store results ------------------------------------------------------
-    run.findings = all_findings
-    run.total_findings = len(all_findings)
-    state.complete_run(run)
+                try:
+                    findings = scanner.scan(target_path)
+                    all_findings.extend(findings)
+                    run.scanners_used.append(scanner.name)
+                    emit(
+                        EventType.OBSERVE,
+                        f"{scanner.name} → {len(findings)} issue(s) found",
+                        run_id=run.id,
+                    )
+                    dash.set_status(
+                        f"{scanner.name} done — {len(findings)} findings",
+                        findings=len(all_findings),
+                        stage=f"scanner:{scanner.name}:done",
+                    )
+                except Exception as e:
+                    emit(EventType.ERROR, f"{scanner.name} failed: {e}", run_id=run.id)
 
-    # Save findings as a separate artifact too
-    state.save_artifact(run.id, "findings", [f.model_dump(mode="json") for f in all_findings])
+            dash.set_status("Finalising scan…", stage="saving")
 
-    # Save events
-    from cyber_sentry_cli.core.events import events_to_dicts
-    state.save_artifact(run.id, "events", events_to_dicts(run.id))
+        # -- Store results --------------------------------------------------
+        run.findings = all_findings
+        run.total_findings = len(all_findings)
+        state.complete_run(run)
+
+        # Save findings as a separate artifact too
+        state.save_artifact(run.id, "findings", [f.model_dump(mode="json") for f in all_findings])
+
+        # Save events
+        from cyber_sentry_cli.core.events import events_to_dicts
+        state.save_artifact(run.id, "events", events_to_dicts(run.id))
 
     # -- Display results ----------------------------------------------------
     console.print()

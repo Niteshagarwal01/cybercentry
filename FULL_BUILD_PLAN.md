@@ -3,6 +3,7 @@
 ## 1) Product Goal
 Build CyberSentry into a production-ready autonomous security remediation platform that:
 - Detects vulnerabilities across codebases
+- Scans authorized website URLs for web-layer security risks
 - Reasons about root causes and blast radius
 - Runs multi-agent remediation debate
 - Generates safe patch candidates
@@ -12,7 +13,9 @@ Build CyberSentry into a production-ready autonomous security remediation platfo
 ## 2) Scope Definition
 In scope:
 - CLI-first core engine
+- Web UI as a first-class product surface (not optional)
 - Scanner orchestration and finding normalization
+- Authorized URL scanning mode (DAST-lite)
 - Triage, clustering, prioritization, confidence scoring
 - Multi-agent debate and judge ranking
 - Patch diff generation and approval gate
@@ -24,12 +27,13 @@ Out of scope for initial production:
 - Autonomous patch apply without approval
 - Self-hosted model training
 - Binary and mobile reverse engineering
+- Unauthorized scanning of third-party websites (must require explicit ownership/permission acknowledgement)
 
 ## 3) Target Architecture
 Layers:
 1. Interface layer
 - CLI (primary)
-- Web console (secondary)
+- Web console (primary for business users)
 - CI plugin hooks
 
 2. Orchestration layer
@@ -42,6 +46,7 @@ Layers:
 - Bandit adapter
 - Dependency audit adapter
 - Custom AST rules engine
+- Web scanner pipeline (HTTP checks, header checks, crawler, optional authenticated checks)
 
 4. Reasoning layer
 - Debate orchestrator (Red, Blue, Auditor)
@@ -62,6 +67,7 @@ Layers:
 - Prompt injection filter
 - Path traversal and command restrictions
 - Secret redaction and policy checks
+- Safe web scanning guardrails (target allowlist, rate limits, robots awareness, explicit legal acknowledgement)
 
 ## 4) Repository and Code Layout
 Recommended structure:
@@ -139,6 +145,7 @@ Deliverables:
 - Python project scaffold and dependency management
 - CLI entrypoint and command groups
 - Basic logging and config loader
+- UI scaffold (React/Next.js) with shared design tokens and auth-ready shell
 
 Definition of done:
 - `cs --help` works
@@ -153,6 +160,7 @@ Deliverables:
 - `cs scan <target>` with Semgrep and Bandit
 - Canonical finding schema and severity mapping
 - `cs triage <run-id>` with dedupe, cluster, prioritize
+- `cs webscan <url>` skeleton command with URL validation and run artifact model
 
 Definition of done:
 - Supports medium-size repos locally
@@ -168,6 +176,7 @@ Deliverables:
 - `cs debate <finding-id>` command
 - Red/Blue/Auditor proposal generation
 - Judge scoring rubric and ranked outputs
+- UI findings detail page with debate timeline and scorecards
 
 Definition of done:
 - 3-round debate flow works in local deterministic mode
@@ -182,6 +191,7 @@ Deliverables:
 - `cs patch <finding-id> --dry-run`
 - Diff generation with file-level impact summary
 - Approval gate with explicit confirmation workflow
+- UI approval center for patch review and decision logging
 
 Definition of done:
 - No apply by default
@@ -195,6 +205,7 @@ Deliverables:
 - `cs report <run-id> --format json|md|sarif`
 - `cs trace <run-id>` timeline replay in terminal
 - Metrics summary (counts, MTTR estimate, risk distribution)
+- Web dashboard with live run status, severity trends, and export actions
 
 Definition of done:
 - Reports are CI-consumable
@@ -207,7 +218,8 @@ Objectives:
 Deliverables:
 - `/runs`, `/findings`, `/debates`, `/patches` APIs
 - WebSocket event stream for thought trace
-- Minimal dashboard for operations and demo
+- Production UI dashboard (operations + executive views)
+- `/webscan` API for URL-targeted scans
 
 Definition of done:
 - CLI and UI reflect same event stream and run artifacts
@@ -221,6 +233,7 @@ Deliverables:
 - GitHub Actions integration mode
 - Policy enforcement options (block on critical)
 - Guardrails for injection, secrets, and path traversal
+- Web scanning safeguards: max depth, request budget, timeout, rate limiting, allowlist policies
 
 Definition of done:
 - CI pipeline usage documented with examples
@@ -234,6 +247,7 @@ Deliverables:
 - Release candidate package
 - Migration docs and runbooks
 - Demo script and benchmark report
+- Hosted deployment blueprint (SaaS) + self-hosted reference deployment
 
 Definition of done:
 - Stable on reference repos
@@ -244,26 +258,31 @@ Definition of done:
 Core requirements:
 - Deterministic run IDs and artifact storage
 - Unified finding schema across scanners
+- Unified finding schema for code scan + web URL scan outputs
 - Critical/high escalation rules into debate
 - Judge ranking with clear scoring dimensions
 - Human approval as mandatory for apply action
 - Exportable reports for engineering and compliance
+- UI workflows for scan launch, finding triage, debate review, and report export
 
 Performance requirements:
 - Scan feedback under 2 minutes for small repos (<50k LOC)
 - Debate completion under 30 seconds in local mode
 - WebSocket update latency below 500 ms average on local network
+- URL scan first-pass summary under 90 seconds for small sites (<200 pages)
 
 Reliability requirements:
 - Retries on scanner subprocess failures
 - Partial-failure tolerance with clear degraded-mode reporting
 - Idempotent reruns with preserved previous artifacts
+- Graceful degradation when website blocks crawling or WAF limits requests
 
 ## 7) Non-Functional Requirements
 Security:
 - Tool output sanitization before model prompts
 - Secret detection and redaction in logs and traces
 - Command execution sandbox policy
+- Web scan legal/safety controls: only authorized targets, signed acknowledgement, optional target verification token
 
 Compliance readiness:
 - Immutable run history metadata
@@ -280,6 +299,9 @@ Primary entities:
 - Run
 - Finding
 - Cluster
+- WebTarget
+- HttpRequestSample
+- WebEvidence
 - DebateSession
 - Proposal
 - JudgeScore
@@ -321,11 +343,13 @@ Test layers:
 3. End-to-end tests
 - Golden repos with known vulnerabilities
 - Full `scan -> triage -> debate -> patch -> report` flow
+- Full `webscan -> triage -> report` flow against local intentionally vulnerable test app
 
 4. Security tests
 - Prompt injection payloads
 - Path traversal payloads
 - Secret leakage checks
+- Web safety checks (rate-limit handling, robots policy behavior, allowlist enforcement)
 
 Quality gates:
 - Minimum 80% coverage for core modules
@@ -342,6 +366,9 @@ Environment strategy:
 - Local developer mode
 - Staging with integration tests
 - Production with monitored telemetry
+- Production deployment modes:
+- Managed SaaS deployment (default)
+- Self-hosted deployment (regulated environments)
 
 Observability:
 - Structured logs

@@ -18,6 +18,7 @@ from cyber_sentry_cli.core.models import (
     Finding,
     Proposal,
 )
+from cyber_sentry_cli.core.utils import parse_llm_json
 from cyber_sentry_cli.integrations.openrouter import OpenRouterClient
 from cyber_sentry_cli.reasoning.prompts import (
     AUDITOR_SYSTEM,
@@ -86,15 +87,21 @@ class DebateEngine:
                     round_num, finding, role, round_proposals
                 )
 
-                # Call LLM
+                # Call LLM with varying temperature based on role to introduce distinct personalities
+                temp_map = {
+                    AgentRole.RED_TEAM: 0.7,   # More creative/aggressive
+                    AgentRole.BLUE_TEAM: 0.3,  # More predictable/safe
+                    AgentRole.AUDITOR: 0.5,    # Balanced
+                }
                 messages = [
                     {"role": "system", "content": _ROLE_PROMPTS[role]},
                     {"role": "user", "content": user_prompt},
                 ]
 
                 try:
-                    response = self.llm.chat(messages)
+                    response = self.llm.chat(messages, temperature=temp_map[role])
                     round_proposals[round_num][role] = response
+
 
                     # Parse into Proposal
                     proposal = self._parse_proposal(response, role, round_num)
@@ -159,24 +166,8 @@ class DebateEngine:
 
     def _parse_proposal(self, response: str, role: AgentRole, round_num: int) -> Proposal:
         """Parse LLM response into a Proposal object."""
-        import json
-
-        try:
-            # Try to parse as JSON
-            data = json.loads(response)
-        except json.JSONDecodeError:
-            # Try extracting JSON from markdown code blocks
-            try:
-                if "```json" in response:
-                    json_str = response.split("```json")[1].split("```")[0].strip()
-                    data = json.loads(json_str)
-                elif "```" in response:
-                    json_str = response.split("```")[1].split("```")[0].strip()
-                    data = json.loads(json_str)
-                else:
-                    data = {}
-            except (json.JSONDecodeError, IndexError):
-                data = {}
+        
+        data = parse_llm_json(response)
 
         return Proposal(
             agent_role=role,

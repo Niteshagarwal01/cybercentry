@@ -9,8 +9,11 @@ from rich.panel import Panel
 from rich.text import Text
 
 from cyber_sentry_cli.core.config import Config
+from cyber_sentry_cli.core.events import scoped_run
 from cyber_sentry_cli.core.models import AgentRole, Finding
 from cyber_sentry_cli.core.run_state import RunStateManager
+from cyber_sentry_cli.core.utils import find_finding_by_id
+from cyber_sentry_cli.output.dashboard import live_dashboard
 from cyber_sentry_cli.output.terminal import (
     print_error,
     print_info,
@@ -22,16 +25,6 @@ from cyber_sentry_cli.output.terminal import (
 console = Console()
 
 
-def _find_finding(findings: list[Finding], finding_id: str) -> Finding:
-    """Find a finding by ID or prefix, raising Exit if not found."""
-    for f in findings:
-        if f.id == finding_id or f.id.startswith(finding_id):
-            return f
-    print_error(f"Finding not found: {finding_id}")
-    print_info("Available findings:")
-    for f in findings[:10]:
-        console.print(f"  • {f.id}: [{f.severity.color}]{f.severity.value}[/] {f.title[:60]}")
-    raise typer.Exit(code=1)
 
 
 def debate_command(finding_id: str, run_id: str = "latest") -> None:
@@ -63,8 +56,14 @@ def debate_command(finding_id: str, run_id: str = "latest") -> None:
         print_error(f"Run not found: {run_id}")
         raise typer.Exit(code=1)
 
-    # Find the finding (returns Finding or raises Exit)
-    finding: Finding = _find_finding(run.findings, finding_id)
+    # Find the finding (raises Exit if not found)
+    finding = find_finding_by_id(run.findings, finding_id)
+    if not finding:
+        print_error(f"Finding not found: {finding_id}")
+        print_info("Available findings:")
+        for f in run.findings[:10]:
+            console.print(f"  • {f.id}: [{f.severity.color}]{f.severity.value}[/] {f.title[:60]}")
+        raise typer.Exit(code=1)
 
     # Show finding details
     console.print()
@@ -85,17 +84,23 @@ def debate_command(finding_id: str, run_id: str = "latest") -> None:
     ))
     console.print()
 
-    # Run debate
+    # Run debate + judge inside live thought-trace dashboard
     from cyber_sentry_cli.reasoning.debate_engine import DebateEngine
     from cyber_sentry_cli.reasoning.judge import JudgeAgent
 
-    engine = DebateEngine(config)
-    session = engine.run_debate(finding)
+    with scoped_run(run_id):
+        with live_dashboard(
+            title="Multi-Agent Debate",
+            target=f"{finding.severity.value}: {finding.title[:50]}",
+        ) as dash:
+            dash.set_status("Starting Red vs Blue vs Auditor debate…", stage="debate")
 
-    # Run judge
-    console.print()
-    judge = JudgeAgent(config)
-    session = judge.evaluate(session, finding)
+            engine = DebateEngine(config)
+            session = engine.run_debate(finding)
+
+            dash.set_status("Judge evaluating proposals…", stage="judge")
+            judge = JudgeAgent(config)
+            session = judge.evaluate(session, finding)
 
     # Display scores
     if session.scores:
@@ -120,6 +125,26 @@ def debate_command(finding_id: str, run_id: str = "latest") -> None:
 
     # Save debate session
     state.save_artifact(run_id, f"debate_{finding.id}", session.model_dump(mode="json"))
+
+    # Also persist all events from this run so `cs trace` can replay them
+    from cyber_sentry_cli.core.events import events_to_dicts
+    existing_events = []
+    try:
+        existing_events = state.load_artifact(run_id, "events")
+    except FileNotFoundError:
+        pass
+        
+    # We retrieve the newly emitted events (in-memory) and append them
+    new_events = events_to_dicts(run_id)
+    # To avoid duplicating events if this process both scanned and debated (like in chat),
+    # we can just write the full set of known events for this run.
+    # In a stateless run, `new_events` is just the debate events. 
+    # If there are existing events, we combine them, ensuring no exact duplicate IDs.
+    combined_events = {e["id"]: e for e in existing_events}
+    for e in new_events:
+        combined_events[e["id"]] = e
+        
+    state.save_artifact(run_id, "events", list(combined_events.values()))
 
     console.print()
     print_success("Debate complete. Session saved.")

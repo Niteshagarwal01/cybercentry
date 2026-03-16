@@ -16,6 +16,7 @@ from cyber_sentry_cli.core.models import (
     Finding,
     PatchCandidate,
 )
+from cyber_sentry_cli.core.utils import parse_llm_json, safe_resolve_path
 from cyber_sentry_cli.integrations.openrouter import OpenRouterClient
 from cyber_sentry_cli.reasoning.prompts import PATCH_GENERATION_SYSTEM
 
@@ -103,8 +104,8 @@ def _load_file_context(file_path: str, line_start: int, line_end: int) -> tuple[
     if not file_path:
         return "", ""
 
-    path = Path(file_path)
-    if not path.exists():
+    path = safe_resolve_path(file_path, Path.cwd())
+    if not path or not path.exists():
         return "", ""
 
     content = path.read_text(encoding="utf-8", errors="replace")
@@ -302,20 +303,9 @@ def generate_patch(
 
 
 def _parse_patch_response(response: str) -> dict:
-    """Parse LLM patch response."""
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        try:
-            if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
-                return json.loads(json_str)
-            elif "```" in response:
-                json_str = response.split("```")[1].split("```")[0].strip()
-                return json.loads(json_str)
-        except (json.JSONDecodeError, IndexError):
-            pass
-    return {"patched_code": response, "explanation": "Raw LLM response"}
+    """Parse LLM patch response using shared utility."""
+    fallback = {"patched_code": response, "explanation": "Raw LLM response"}
+    return parse_llm_json(response, fallback=fallback)
 
 
 def _generate_unified_diff(original: str, patched: str, file_path: str) -> str:
