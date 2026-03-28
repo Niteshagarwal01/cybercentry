@@ -1,0 +1,33 @@
+# Environment
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+cyber_sentry/.venv/
+venv/
+env/
+
+# CyberSentry runtime
+.cybersentry/runs/
+cyber_sentry/.cybersentry/runs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Testing
+.pytest_cache/
+coverage/
+.coverage
+htmlcov/

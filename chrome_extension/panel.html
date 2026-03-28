@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CyberSentry</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <div class="title">CyberSentry</div>
+          <div class="subtitle">Local security insight</div>
+        </div>
+      </div>
+      <div id="badge" class="badge badge--idle" aria-live="polite">Idle</div>
+    </header>
+
+    <main class="main">
+      <section class="card">
+        <div class="row">
+          <div class="kicker">Current site</div>
+          <div id="site" class="mono site">—</div>
+        </div>
+
+        <label class="toggle">
+          <input id="authToggle" type="checkbox" />
+          <span class="toggle-ui" aria-hidden="true"></span>
+          <span class="toggle-text">I confirm I’m authorized to test this target</span>
+        </label>
+
+        <div class="actions actions--3">
+          <button id="scanBtn" class="btn btn--primary">Quick scan</button>
+          <button id="detailsBtn" class="btn btn--secondary" disabled>Run JSON</button>
+          <button id="remBtn" class="btn btn--secondary" disabled>Fix plan</button>
+        </div>
+
+        <div id="status" class="status" aria-live="polite"></div>
+      </section>
+
+      <section class="card">
+        <div class="tabs" role="tablist" aria-label="Scan output">
+          <button class="tab active" role="tab" aria-selected="true" data-tab="summary">Summary</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="findings">Findings</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="fix">Fix Plan</button>
+        </div>
+
+        <div id="tab-summary" class="tab-panel active" role="tabpanel">
+          <div class="summary">
+            <div class="summary-item">
+              <div class="kicker">Pages scanned</div>
+              <div id="pagesScanned" class="summary-value">—</div>
+            </div>
+            <div class="summary-item">
+              <div class="kicker">Findings</div>
+              <div id="findingCount" class="summary-value">—</div>
+            </div>
+          </div>
+
+          <div class="artifact-actions">
+            <button id="reportBtn" class="btn btn--secondary" disabled>View REPORT</button>
+            <button id="remediationBtn" class="btn btn--secondary" disabled>View Remediation</button>
+          </div>
+          <div id="artifact" class="artifact empty">Run a scan to view details.</div>
+        </div>
+
+        <div id="tab-findings" class="tab-panel" role="tabpanel">
+          <div id="findings" class="findings empty">No scan yet.</div>
+        </div>
+
+        <div id="tab-fix" class="tab-panel" role="tabpanel">
+          <div id="fixPlan" class="fix empty">Run a scan to generate a fix plan.</div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="muted">Backend:</span>
+      <span class="mono">127.0.0.1:8081</span>
+    </footer>
+
+    <script src="panel.js"></script>
+  </body>
+</html>
+

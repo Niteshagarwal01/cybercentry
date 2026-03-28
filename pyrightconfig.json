@@ -1,0 +1,13 @@
+{
+    "include": ["cyber_sentry/src"],
+    "extraPaths": [
+        "cyber_sentry/src",
+        "C:\\Users\\offic\\AppData\\Roaming\\Python\\Python310\\site-packages"
+    ],
+    "pythonPath": "C:\\Program Files\\Python310\\python.exe",
+    "pythonVersion": "3.10",
+    "typeCheckingMode": "basic",
+    "reportMissingImports": "none",
+    "reportMissingModuleSource": "none",
+    "reportGeneralTypeIssues": "warning"
+}

@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "CyberSentry Local Site Check",
+  "version": "0.1.0",
+  "description": "Local-only security insight using CyberSentry on localhost.",
+  "action": {
+    "default_title": "CyberSentry"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "background": {
+    "service_worker": "service_worker.js",
+    "type": "module"
+  },
+  "permissions": ["activeTab", "tabs", "storage", "sidePanel"],
+  "host_permissions": [
+    "http://127.0.0.1:8081/*",
+    "http://localhost:8081/*"
+  ]
+}
+
