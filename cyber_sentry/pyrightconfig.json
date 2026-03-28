@@ -1,0 +1,9 @@
+{
+    "include": ["src"],
+    "extraPaths": ["src"],
+    "pythonVersion": "3.10",
+    "pythonPath": ".venv/Scripts/python.exe",
+    "typeCheckingMode": "basic",
+    "reportMissingImports": "none",
+    "reportMissingModuleSource": "none"
+}

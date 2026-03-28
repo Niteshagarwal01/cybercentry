@@ -1,0 +1,10 @@
+{
+    "source_directories": ["src"],
+    "search_path": [
+        "src",
+        ".venv/Lib/site-packages"
+    ],
+    "site_package_search_strategy": "all",
+    "python_version": "3.10",
+    "strict": false
+}

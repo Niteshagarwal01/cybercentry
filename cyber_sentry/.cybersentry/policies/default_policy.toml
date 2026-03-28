@@ -1,0 +1,82 @@
+# CyberSentry Default Security Policy
+# Controls scan behaviour, escalation rules, and enforcement thresholds.
+# Copy and customise for project-specific overrides.
+
+[policy]
+name = "default"
+version = "1.0.0"
+description = "Baseline security policy for all CyberSentry scans"
+
+# ---------------------------------------------------------------------------
+# Escalation rules — which findings trigger automatic debate
+# ---------------------------------------------------------------------------
+[escalation]
+# Severities that are automatically escalated to multi-agent debate
+auto_debate_severities = ["CRITICAL", "HIGH"]
+
+# Minimum confidence score (0.0–1.0) required to escalate
+min_confidence_for_debate = 0.6
+
+# Maximum findings to escalate per run (prevents runaway API costs)
+max_debates_per_run = 5
+
+# ---------------------------------------------------------------------------
+# Enforcement thresholds — used in CI/CD blocking mode
+# ---------------------------------------------------------------------------
+[enforcement]
+# Block the pipeline (exit 1) if findings of these severities are found
+block_on_severities = ["CRITICAL"]
+
+# Maximum allowed HIGH findings before blocking
+max_high_findings = 10
+
+# Maximum allowed MEDIUM findings before blocking
+max_medium_findings = 50
+
+# ---------------------------------------------------------------------------
+# Scan configuration
+# ---------------------------------------------------------------------------
+[scan]
+# Paths to exclude from all scanner runs (glob patterns)
+exclude_paths = [
+    "**/node_modules/**",
+    "**/.venv/**",
+    "**/venv/**",
+    "**/__pycache__/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/*.min.js",
+]
+
+# File extensions to include in scanning
+include_extensions = [".py", ".js", ".ts", ".go", ".java", ".rb", ".php"]
+
+# Maximum file size to scan (bytes) — skip files larger than this
+max_file_size_bytes = 1048576  # 1 MB
+
+# ---------------------------------------------------------------------------
+# Scoring overrides — adjust severity weights per project context
+# ---------------------------------------------------------------------------
+[scoring]
+# Multiplicative weight applied on top of base severity weights
+# Values > 1.0 increase risk score, < 1.0 decrease it
+[scoring.category_multipliers]
+"CWE-89"  = 1.5   # SQL Injection — extra weight
+"CWE-78"  = 1.5   # Command Injection — extra weight
+"CWE-502" = 1.3   # Insecure Deserialization
+"CWE-259" = 1.2   # Hardcoded Credentials
+"CWE-327" = 1.0   # Weak Cryptography (default)
+"CWE-703" = 0.8   # assert usage (lower priority)
+
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
+[reporting]
+# Default export formats when running cs report
+default_formats = ["md", "sarif"]
+
+# Include code snippets in reports
+include_code_snippets = true
+
+# Include full debate transcripts in reports
+include_debate_transcripts = false

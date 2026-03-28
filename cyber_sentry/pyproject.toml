@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cyber-sentry"
+version = "0.1.0"
+description = "Autonomous Red Team AI Agent — Hunts vulnerabilities, debates the best fix, thinks out loud."
+readme = "PRODUCT_IDEA.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "CyberSentry Team"}]
+
+dependencies = [
+    "typer[all]>=0.9.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.25.0",
+    "python-dotenv>=1.0.0",
+    "tomli>=2.0.0;python_version<'3.11'",
+    "tomli-w>=1.0.0",
+]
+
+[project.optional-dependencies]
+scanners = [
+    "bandit>=1.7.0",
+    "semgrep>=1.75.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+]
+ui = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+]
+
+[project.scripts]
+cs = "cyber_sentry_cli.main:app"
+chat = "cyber_sentry_cli.main:chat_entrypoint"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

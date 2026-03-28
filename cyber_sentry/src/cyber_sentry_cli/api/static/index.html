@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CyberSentry // Mission Console</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  
+  <!-- Core Styles -->
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  
+  <!-- Clerk Authentication Overlay -->
+  <div id="auth-container" class="auth-overlay">
+    <!-- Animated background elements -->
+    <div class="blob-wrapper">
+      <div class="blob blob-1"></div>
+      <div class="blob blob-2"></div>
+      <div class="blob blob-3"></div>
+    </div>
+    <div class="grain-overlay"></div>
+
+    <!-- Logo floats above the glassy Clerk Card -->
+    <div class="auth-header-floating">
+      <div class="auth-brand">
+        Cyber<span>Sentry</span>
+        <div class="auth-subtitle">Autonomous Security Engineering Platform</div>
+      </div>
+    </div>
+    
+    <div id="clerk-mount"></div>
+    <p class="auth-help">Wait for Clerk JS to load, or insert your clerk publishable key in index.html</p>
+  </div>
+
+  <!-- Main Authenticated App (Hidden by Default) -->
+  <div id="app" style="display: none; width: 100%; height: 100vh;">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-text">Cyber<span>Sentry</span></div>
+        <div id="user-button"></div>
+      </div>
+      
+      <nav class="nav-menu">
+        <button class="nav-btn" id="toggle-history-btn" type="button" aria-label="Toggle chat history panel">
+          <div class="nav-icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h13M8 12h13M8 17h13M3 7h.01M3 12h.01M3 17h.01"></path>
+            </svg>
+          </div>
+          <div class="nav-label">History</div>
+          <div class="nav-glow"></div>
+        </button>
+        <button class="nav-btn active" data-tab="security-chat">
+          <div class="nav-icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg></div>
+          <div class="nav-label">Security Chat</div>
+          <div class="nav-glow"></div>
+        </button>
+        <button class="nav-btn" data-tab="webscan">
+          <div class="nav-icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg></div>
+          <div class="nav-label">URL Scanner</div>
+          <div class="nav-glow"></div>
+        </button>
+        <button class="nav-btn" data-tab="setup">
+          <div class="nav-icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg></div>
+          <div class="nav-label">Local Setup Guide</div>
+          <div class="nav-glow"></div>
+        </button>
+
+        <div class="nav-divider"></div>
+
+        <button class="nav-btn locked" data-tab="agent-chat" id="nav-agent-chat">
+          <div class="nav-icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="icon-lock"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg></div>
+          <div class="nav-label">Agent Console</div>
+          <div class="nav-glow"></div>
+        </button>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <div class="version-tag">SYSTEM ONLINE // v0.1.0</div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <div class="grain-overlay"></div>
+
+      <!-- TAB 1: SECURITY CHAT -->
+      <section id="security-chat-tab" class="tab-content active">
+        <div class="chat-layout">
+          <aside class="chat-history glass-panel" id="security-history">
+            <div class="chat-history-header">
+              <div class="chat-history-title">Chat History</div>
+              <div class="chat-history-actions">
+                <button class="chat-history-icon" id="security-history-close" type="button" aria-label="Hide history">&times;</button>
+                <button class="chat-history-new" id="security-new-chat" type="button">New</button>
+              </div>
+            </div>
+            <div class="chat-history-list" id="security-history-list"></div>
+          </aside>
+
+          <div class="chat-container">
+            <!-- Welcome -->
+            <div id="security-welcome" class="welcome-screen hover-float">
+              <div class="glass-card welcome-card">
+                <div class="kicker neon-text">AI Security Assistant</div>
+                <h1>Global Knowledge Base</h1>
+                <p class="subtitle">Ask anything about application security, OWASP top 10, cryptography best practices, or secure coding.</p>
+                
+                <div class="quick-actions">
+                  <button class="glass-btn" onclick="setSecurityChat('How do I prevent SQL injection in Python?')">How do I prevent SQL injection in Python?</button>
+                  <button class="glass-btn" onclick="setSecurityChat('Explain Cross-Site Scripting (XSS)')">Explain Cross-Site Scripting (XSS)</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Messages -->
+            <div id="security-messages" class="chat-messages" style="display: none;"></div>
+          </div>
+        </div>
+        
+        <!-- Input -->
+        <div class="chat-input-wrapper glass-panel">
+          <div class="chat-input-container">
+            <textarea id="security-input" placeholder="Type your security question..."></textarea>
+            <button id="security-send-btn" class="send-btn neon-btn" aria-label="Send">
+              <svg fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: WEBSCAN -->
+      <section id="webscan-tab" class="tab-content">
+        <div class="scrollable-content">
+          <div class="content-header fade-in-up">
+            <h2>Authorized URL Scanner</h2>
+            <p>Execute DAST-lite remote reconnaissance on targets you legally control.</p>
+          </div>
+          
+          <div class="webscan-card glass-card fade-in-up" style="animation-delay: 0.1s;">
+            <div class="input-group">
+              <label for="url">Target URL</label>
+              <input id="url" type="text" placeholder="https://example.com" class="text-input" />
+            </div>
+            
+            <div class="settings-grid">
+              <div class="input-group">
+                <label for="pages">Max Pages</label>
+                <input id="pages" type="number" value="30" min="1" class="text-input glass-input" />
+              </div>
+              <div class="input-group">
+                <label for="depth">Crawl Depth</label>
+                <input id="depth" type="number" value="2" min="0" class="text-input glass-input" />
+              </div>
+              <div class="input-group">
+                <label for="timeout">Timeout (s)</label>
+                <input id="timeout" type="number" value="8" min="1" class="text-input glass-input" />
+              </div>
+              <div class="input-group">
+                <label for="rate">Rate limit (ms)</label>
+                <input id="rate" type="number" value="150" min="0" class="text-input glass-input" />
+              </div>
+            </div>
+            
+            <div class="checkbox-group">
+              <label class="checkbox-label">
+                <input id="ack" type="checkbox" />
+                <span class="custom-checkbox"></span>
+                <span>I explicitly confirm I am authorized to pentest this target.</span>
+              </label>
+            </div>
+            
+            <button class="primary-btn neon-btn" onclick="runScan()">Initialize Scan Protocol</button>
+            <div id="webscan-status" class="status-msg terminal-font"></div>
+            <div id="scanSummary" class="scan-summary"></div>
+            
+            <div class="artifact-actions" id="artifactActions" style="display:none;">
+              <button class="secondary-btn" onclick="loadArtifact('REPORT.md')">View REPORT.md</button>
+              <button class="secondary-btn" onclick="loadArtifact('WEB_REMEDIATION.md')">View REMEDIATION.md</button>
+            </div>
+            
+            <div id="artifactPanel" class="artifact-panel glass-card" style="display:none; margin-top: 20px;">
+              <div class="panel-header">
+                <span id="artifactTitle" class="neon-text">Artifact</span>
+                <button class="icon-btn" aria-label="Close" onclick="document.getElementById('artifactPanel').style.display='none'">&times;</button>
+              </div>
+              <pre id="artifactContent"></pre>
+            </div>
+            
+            <div id="results" class="results-table-container"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: SETUP GUIDE -->
+      <section id="setup-tab" class="tab-content">
+        <div class="scrollable-content">
+          <div class="content-header fade-in-up">
+            <h2>Local Agent Integration</h2>
+            <p>Connect this dashboard to your local filesystem to unlock the Autonomous Agent.</p>
+          </div>
+          
+          <div class="guide-container">
+            <div class="glass-card fade-in-up" style="animation-delay: 0.1s; margin-bottom: 24px;">
+              <h3 class="neon-text" style="font-size: 14px; text-transform:uppercase; margin-bottom: 12px;">Step 1: Install CLI</h3>
+              <pre class="code-block monospace"><code>git clone https://github.com/Niteshagarwal01/cybercentry.git
+cd cyber_sentry
+python -m venv .venv
+
+# Windows:
+.venv\Scripts\Activate.ps1
+
+pip install -e ".[dev,scanners,ui]"</code></pre>
+            </div>
+
+            <div class="glass-card fade-in-up" style="animation-delay: 0.2s; margin-bottom: 24px;">
+              <h3 class="neon-text" style="font-size: 14px; text-transform:uppercase; margin-bottom: 12px;">Step 2: Initialize Config</h3>
+              <pre class="code-block monospace"><code>cp .env.example .env
+# Add the OPENROUTER_API_KEY to your .env
+
+cs init .</code></pre>
+            </div>
+            
+            <div class="glass-card setup-verification fade-in-up" style="animation-delay: 0.3s;">
+              <h3>Authentication Sync</h3>
+              <p class="muted">Click below to ping the backend server and verify that `cs init` has been executed locally. This connects your auth session to the filesystem repository.</p>
+              <button id="verify-setup-btn" class="primary-btn neon-btn pulse">Link Local Agent</button>
+              <div id="verify-error" class="terminal-font bad" style="margin-top: 12px; display: none;"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: AGENT CHAT -->
+      <section id="agent-chat-tab" class="tab-content">
+        <div class="chat-layout">
+          <aside class="chat-history glass-panel" id="agent-history">
+            <div class="chat-history-header">
+              <div class="chat-history-title">Agent Runs</div>
+              <div class="chat-history-actions">
+                <button class="chat-history-icon" id="agent-history-close" type="button" aria-label="Hide history">&times;</button>
+                <button class="chat-history-new chat-history-new-blue" id="agent-new-chat" type="button">New</button>
+              </div>
+            </div>
+            <div class="chat-history-list" id="agent-history-list"></div>
+          </aside>
+
+          <div class="chat-container" id="agent-chat-container">
+            <div id="agent-welcome" class="welcome-screen hover-float">
+              <div class="glass-card welcome-card agent-theme">
+                <div class="kicker neon-text-blue">Local File System Access: Online</div>
+                <h1>Autonomous Agent Console</h1>
+                <p class="subtitle">I am connected to your local repository. I can execute Bandit and Semgrep scans, triage code findings, debate solutions, and generate secure patches.</p>
+                
+                <div class="quick-actions">
+                  <button class="glass-btn" onclick="setAgentChat('Run a full security scan on tests/')">Execute Scan Sequence</button>
+                  <button class="glass-btn" onclick="setAgentChat('Identify critical vulnerabilities from the latest scan')">Triage Findings</button>
+                </div>
+              </div>
+            </div>
+            <div id="agent-messages" class="chat-messages" style="display: none;"></div>
+          </div>
+        </div>
+        
+        <div class="chat-input-wrapper glass-panel">
+          <div class="chat-input-container agent-input-theme">
+            <textarea id="agent-input" placeholder="Instruct the agent... (e.g. 'Patch the SQL injection in app.py')"></textarea>
+            <button id="agent-send-btn" class="send-btn neon-btn-blue" aria-label="Send">
+              <svg fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>
+            </button>
+          </div>
+          <div class="input-footer">Notice: The Agent operates directly on your local filesystem.</div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Modals -->
+    <div id="unlock-overlay" class="overlay" style="display:none;">
+      <div class="glass-card modal bounce-in">
+        <div class="modal-icon neon-text-blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="56" height="56">
+            <path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"></path>
+          </svg>
+        </div>
+        <h2>Agent Access Unlocked</h2>
+        <p>Local config confirmed. The Autonomous Agent Console has been initialized.</p>
+        <button class="primary-btn neon-btn-blue" onclick="closeUnlockModal()">ENTER CONSOLE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clerk JS Integration -->
+  <script>
+    const PUBLISHABLE_KEY = "pk_test_Y29zbWljLWVhZ2xlLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ";
+  </script>
+  <script async crossorigin="anonymous"
+    data-clerk-publishable-key="pk_test_Y29zbWljLWVhZ2xlLTQ1LmNsZXJrLmFjY291bnRzLmRldiQ"
+    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+    onload="initComponents()">
+  </script>
+
+  <!-- App Logic -->
+  <script src="/static/app.js"></script>
+</body>
+</html>
